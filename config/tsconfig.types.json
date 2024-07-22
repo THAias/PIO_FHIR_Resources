@@ -1,0 +1,12 @@
+{
+    "extends": "../tsconfig",
+    "compilerOptions": {
+        "declaration": true,
+        "noEmit": false,
+        "emitDeclarationOnly": true,
+        "declarationMap": true,
+        "outDir": "../dist/types" /* Redirect output structure to the directory. */
+    },
+    "exclude": ["../tests/**/*"],
+    "include": ["../src/**/*"]
+}

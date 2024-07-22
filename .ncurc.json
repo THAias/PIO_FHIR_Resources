@@ -1,0 +1,10 @@
+{
+    "reject": [
+        "de.basisprofil.r4",
+        "hl7.fhir.r4.core",
+        "kbv.basis",
+        "kbv.mio.ueberleitungsbogen",
+        "ihe.formatcode.fhir",
+        "eslint"
+    ]
+}
