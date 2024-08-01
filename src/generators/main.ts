@@ -104,15 +104,26 @@ generateResourceLookUpTable()
     });
 
 const countGermanTranslations = async (valueSetLookUpTable: ValueSetLookUpTable): Promise<void> => {
+    let totalCountGerman: number = 0;
+    let totalCountEnglish: number = 0;
     await Promise.all(
         Object.entries(valueSetLookUpTable).map(async ([key, value]): Promise<void> => {
             let count: number = 0;
+            let countEnglish: number = 0;
             for (const item of value) {
                 if (item.germanDisplay) {
                     count++;
                 }
+                countEnglish++;
             }
+            totalCountGerman += count;
+            totalCountEnglish += countEnglish;
             console.debug(`${key}: ${count}/${value.length}`);
         })
+    );
+    console.log(
+        "Counting German Translations finished",
+        `Total: German:${totalCountGerman} / All:${totalCountEnglish}`,
+        `In Total ${parseFloat(String((totalCountGerman / totalCountEnglish) * 100)).toFixed(2)}% of the ValueSetLookUpTable has German translations`
     );
 };

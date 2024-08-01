@@ -15,24 +15,25 @@ export const generatePIOSmallLookUpTable = async (lookUpTable: ResourceLookUpTab
      * @param {PioSmallExclusions} pioSmallExclusions Data from PioSmallExclusions.json
      */
     const deleteWholeResource = (pioSmallExclusions: PioSmallExclusions): void => {
+        const originalResourceCount: number = Object.keys(lookUpTable).length;
         const deletedResources: string[] = [];
         const resourcesNotFound: string[] = [];
         Object.keys(pioSmallExclusions).forEach((resourceName: string): void => {
             if (pioSmallExclusions[resourceName.toString()].wholeResourceExcluded) {
                 if (Object.keys(lookUpTable).includes(resourceName)) {
                     //Delete resource from lookUpTable
-                    delete lookUpTable[resourceName.toString()];
                     deletedResources.push(resourceName);
+                    delete lookUpTable[resourceName.toString()];
                 } else {
                     //Cannot find resource to delete
                     resourcesNotFound.push(resourceName);
                 }
             }
         });
-        console.info("During PioSmallLookUpTable generation " + deletedResources.length + " resources were deleted:");
-        console.info(deletedResources);
-        console.info(resourcesNotFound.length + " resources were not found and couldn't be deleted:");
-        console.info(resourcesNotFound);
+        console.info(
+            `\n\nDuring PioSmallLookUpTable generation ${deletedResources.length} resources out of ${originalResourceCount} were deleted`
+        );
+        console.info(`${resourcesNotFound.length} resources were not found and couldn't be deleted\n\n`);
     };
 
     /**
@@ -61,9 +62,10 @@ export const generatePIOSmallLookUpTable = async (lookUpTable: ResourceLookUpTab
                 });
             }
         });
-        console.info("During PioSmallLookUpTable generation " + numberOfDeletedPaths + " paths were deleted");
-        console.info(pathsNotFound.length + " paths were not found and couldn't be deleted:");
+        console.info(`During PioSmallLookUpTable generation ${numberOfDeletedPaths} paths were deleted`);
+        console.info(`${pathsNotFound.length} paths were not found and couldn't be deleted:`);
         console.info(pathsNotFound);
+        console.info("\n\n");
     };
 
     await fs.promises
