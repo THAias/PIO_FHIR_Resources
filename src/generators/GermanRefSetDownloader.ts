@@ -12,7 +12,7 @@ const axiosClient: AxiosInstance = axios.create({
         "Content-Type": "application/json",
         Connection: "keep-alive",
         "Accept-Language": "de",
-        "User-Agent": "Care-Regio-Pio-Editor/1.00",
+        "User-Agent": "Care-Regio-Pio-Editor/1.15",
     },
 });
 
@@ -30,7 +30,7 @@ axiosClient.interceptors.response.use(
     }
 );
 
-const rateLimitAxiosClient: RateLimitedAxiosInstance = rateLimit(axiosClient, {
+export const rateLimitAxiosClient: RateLimitedAxiosInstance = rateLimit(axiosClient, {
     maxRequests: 5,
     perMilliseconds: 1000,
 });
@@ -105,13 +105,33 @@ const getAllRefSets = (refSetIds: Record<string, string>): Promise<RefSet>[] => 
  */
 const extractGermanRefSetData = (refSet: RefSet): Record<string, ValueSetLookUpTableCoding> => {
     const refSetData: Record<string, ValueSetLookUpTableCoding> = {};
+    let itemCount = 0;
     refSet.items.forEach((item: RefSetItem): void => {
-        refSetData[item.referencedComponent.conceptId] = {
-            code: item.referencedComponent.conceptId,
-            display: item.referencedComponent.fsn.term,
-            germanDisplay: item.referencedComponent.pt.term,
-        };
+        if (
+            (item.referencedComponent.fsn === undefined || item.referencedComponent.pt === undefined) &&
+            item.referencedComponent.lang === "de" &&
+            item.referencedComponent.term != null
+        ) {
+            itemCount++;
+            refSetData[item.referencedComponent.conceptId] = {
+                code: item.referencedComponent.conceptId,
+                display: item.referencedComponent.term,
+                germanDisplay: item.referencedComponent.term,
+            };
+        } else if (
+            item.referencedComponent.fsn !== undefined &&
+            item.referencedComponent.pt !== undefined &&
+            item.referencedComponent.pt.lang === "de"
+        ) {
+            itemCount++;
+            refSetData[item.referencedComponent.conceptId] = {
+                code: item.referencedComponent.conceptId,
+                display: item.referencedComponent.fsn.term,
+                germanDisplay: item.referencedComponent.pt.term,
+            };
+        }
     });
+    console.debug(`Extracted ${itemCount} german translations from ${refSet.items.length} refSet items`);
     return refSetData;
 };
 
@@ -145,6 +165,7 @@ export const addGermanRefSetTranslations = async (
 ): Promise<ValueSetLookUpTable> => {
     console.debug("\nStart adding german translations from refSets");
     const refSetIDs: Record<string, string> = {
+        "Germany language reference set": "31000274107",
         Allergene: "30121001000107",
         "Manifestation von Allergien": "30111001000102",
         "Unerwünschte Reaktionen bei Impfungen": "30131001000105",
@@ -161,6 +182,15 @@ export const addGermanRefSetTranslations = async (
         "Top-Level-Konzepte und gängige Begriffe": "30191001000109",
         Einheit: "30181001000106",
         Impfprodukte: "30171001000108",
+        "ICNP interventions to SNOMED CT simple map": "712505008",
+        "ICNP diagnoses to SNOMED CT simple map": "711112009",
+        "International Classification for Nursing Practice reference set": "1157358007",
+        "Nursing Activities Reference Set": "733990004",
+        "Nursing Health Issues Reference Set": "733991000",
+        "Unerwünschte-Reaktionen-bei-Impfungen": "30131001000105",
+        "Immunisierung Impfplan": "30161001000104",
+        "Zielkrankheit-von-Impfungen": "30151001000101",
+        "Allergie-Unverträglichkeiten-bei-Impfungen": "30141001000103",
     };
     const refSets: Promise<RefSet>[] = getAllRefSets(refSetIDs);
 

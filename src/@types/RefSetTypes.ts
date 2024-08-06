@@ -12,6 +12,8 @@ export interface RefSetReferencedComponent {
         lang: string;
     };
     id: string;
+    term?: string;
+    lang?: string;
 }
 
 export interface RefSetItem {

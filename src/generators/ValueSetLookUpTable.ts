@@ -3,6 +3,8 @@
  *  The path is a constant and is not changed by the user.
  *  See https://github.com/eslint-community/eslint-plugin-security/issues/65 for more information.
  */
+import axios, { AxiosInstance, AxiosResponse } from "axios";
+import rateLimit, { RateLimitedAxiosInstance } from "axios-rate-limit";
 import fs from "fs";
 import path from "path";
 
@@ -28,6 +30,10 @@ import {
     ValueSetExpansionContains,
 } from "../@types/Types";
 import { root } from "../Helper";
+import { getFromCache, saveToCache } from "../cache/cacheHandler";
+
+export let germanCounter: number = 0;
+export let totalCounter: number = 0;
 
 /**
  * Get all ValueSet URLs from the ResourceLookUpTable.
@@ -62,14 +68,155 @@ const readJsonFromFile = (filePath: string): ValueSet | CodeSystem => {
     return JSON.parse(jsonString);
 };
 
+interface GermanConceptIDs {
+    [key: string]: {
+        conceptId: string;
+        term: string;
+        languageCode: string;
+        acceptabilityMap: {
+            [key: string]: string;
+        };
+    };
+}
+
+/**
+ * Get All Values in german module and cache it with cache function
+ * @returns {GermanConceptIDs | undefined} The German Concept IDs
+ */
+const getAllGermanConceptIds = async (): Promise<GermanConceptIDs | undefined> => {
+    const cacheKey: string = "germanConceptIds";
+    const cachedGermanConceptIDs: GermanConceptIDs | null = await getFromCache<GermanConceptIDs>(cacheKey);
+    if (cachedGermanConceptIDs) {
+        return cachedGermanConceptIDs;
+    } else {
+        const axiosClient: AxiosInstance = axios.create({
+            baseURL: `https://browser.ihtsdotools.org/snowstorm/snomed-ct/MAIN/SNOMEDCT-DE`,
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                Connection: "keep-alive",
+                "Accept-Language": "de",
+                "User-Agent": "Care-Regio-Pio-Editor/2",
+            },
+        });
+
+        axiosClient.interceptors.response.use(
+            function (response: AxiosResponse) {
+                return response;
+            },
+            function (error) {
+                const res = error.response;
+                console.error("Looks like there was a problem. Status Code: " + res.status);
+                return Promise.reject(error);
+            }
+        );
+
+        const rateLimitAxiosClient: RateLimitedAxiosInstance = rateLimit(axiosClient, {
+            maxRequests: 5,
+            perMilliseconds: 1000,
+        });
+
+        let itemLength: number = 0;
+        let totalLength: number = 0;
+        let notActiveReleased: number = 0;
+        let notAccepted: number = 0;
+        const items: GermanConceptIDs = {};
+        const recursiveHelper = async (searchAfter?: string): Promise<void> => {
+            const response = await rateLimitAxiosClient.get("/members", {
+                params: {
+                    limit: 10000,
+                    active: true,
+                    conceptActive: true,
+                    lang: "de",
+                    module: "11000274103",
+                    groupByConcept: true,
+                    type: "900000000000013009",
+                    searchAfter: searchAfter,
+                },
+            });
+            if (response.data) {
+                totalLength = response.data.total;
+                itemLength += response.data.items.length;
+                response.data.items.forEach((item): void => {
+                    if (
+                        item.active &&
+                        item.released &&
+                        item.referencedComponent.lang === "de" &&
+                        item.referencedComponent.term
+                    ) {
+                        if (items[item.referencedComponent.conceptId]) {
+                            notAccepted++;
+                            const oldElement = items[item.referencedComponent.conceptId];
+                            const newElement = {
+                                conceptId: item.referencedComponent.conceptId,
+                                term: item.referencedComponent.term,
+                                languageCode: item.referencedComponent.lang,
+                                acceptabilityMap: item.referencedComponent.acceptabilityMap,
+                            };
+                            if (newElement.acceptabilityMap["31000274107"] === "PREFERRED") {
+                                items[item.referencedComponent.conceptId] = newElement;
+                            } else if (oldElement.acceptabilityMap["31000274107"] !== "PREFERRED") {
+                                console.warn(
+                                    `The concept ID ${newElement.conceptId} has no preferred term === ${newElement.acceptabilityMap["31000274107"]}`
+                                );
+                            }
+                        }
+                        items[item.referencedComponent.conceptId] = {
+                            conceptId: item.referencedComponent.conceptId,
+                            term: item.referencedComponent.term,
+                            languageCode: item.referencedComponent.lang,
+                            acceptabilityMap: item.referencedComponent.acceptabilityMap,
+                        };
+                    } else {
+                        notActiveReleased++;
+                    }
+                });
+                if (itemLength < totalLength) {
+                    await recursiveHelper(response.data.searchAfter);
+                }
+            }
+        };
+        await recursiveHelper();
+        console.debug(`Get ${Object.keys(items).length} individual/${totalLength} from German Concept IDs`);
+        console.warn(`Not active or released: ${notActiveReleased}/${totalLength}`);
+        console.warn(`Not accepted: ${notAccepted}/${totalLength}`);
+        console.warn(
+            `In total ${notAccepted + notActiveReleased + Object.keys(items).length}/${totalLength} are processed`
+        );
+        await saveToCache(cacheKey, items);
+        return items;
+    }
+};
+
+/**
+ * Check if the german concept id exists and return the term
+ * @param {GermanConceptIDs} germanConceptIds The German Concept IDs
+ * @param {string} conceptId The concept ID
+ * @returns {string | undefined} The term of the concept ID
+ */
+const checkIfGermanConceptIdExists = (
+    germanConceptIds: GermanConceptIDs | undefined,
+    conceptId: string
+): string | undefined => {
+    if (germanConceptIds && germanConceptIds[conceptId as string]) {
+        germanCounter++;
+        return germanConceptIds[conceptId as string].term;
+    }
+};
+
 /**
  * Extracts the information from the given ValueSet and returns them as an object.
  * @param {string} url The url of the ValueSet.
  * @param {Record<string, string>} valueSetPaths All ValueSet paths from the FHIR resources.
+ * @param {GermanConceptIDs | undefined} germanConceptIds The German Concept IDs.
  * @returns {ValueSetLookUpTableInclude} The ValueSet information as an object.
  */
 // eslint-disable-next-line sonarjs/cognitive-complexity
-const extractValueSetInformation = (url: string, valueSetPaths: Record<string, string>): ValueSetLookUpTableInclude => {
+const extractValueSetInformation = async (
+    url: string,
+    valueSetPaths: Record<string, string>,
+    germanConceptIds: GermanConceptIDs | undefined
+): Promise<ValueSetLookUpTableInclude> => {
     const path: string = valueSetPaths[url.toString()];
     const valueSet: ValueSet = readJsonFromFile(path) as ValueSet;
     const tempObj: ValueSetLookUpTableInclude = {
@@ -78,27 +225,37 @@ const extractValueSetInformation = (url: string, valueSetPaths: Record<string, s
     tempObj.include?.forEach((includeObj: ValueSetComposeInclude) => {
         if ("concept" in includeObj && "system" in includeObj) {
             includeObj.concept = includeObj.concept?.map((conceptObj: ValueSetComposeIncludeConcept) => {
+                totalCounter++;
                 const germanTranslation: ValueSetComposeIncludeConceptDesignation | undefined =
                     conceptObj.designation?.find(
                         (translation: ValueSetComposeIncludeConceptDesignation): boolean =>
                             translation.language === "de"
                     );
+
+                const germanTranslationTerm: string | undefined = checkIfGermanConceptIdExists(
+                    germanConceptIds,
+                    conceptObj.code
+                );
                 return {
                     code: conceptObj.code,
-                    display: germanTranslation?.value ?? conceptObj.display,
+                    display: germanTranslation?.value ?? germanTranslationTerm ?? conceptObj.display,
                     system: includeObj.system ?? valueSet.url,
                     version: includeObj.version ?? valueSet.version,
+                    germanDisplay: germanTranslation?.value ?? germanTranslationTerm,
                 };
             });
         } else if (includeObj.valueSet !== undefined) {
             const valueSetUrl: string | string[] =
                 includeObj.valueSet.length > 1 ? includeObj.valueSet : includeObj.valueSet[0];
             if (typeof valueSetUrl === "string") {
-                const valueSetData: ValueSetLookUpTableInclude = extractValueSetInformation(valueSetUrl, valueSetPaths);
-                delete includeObj.valueSet;
-                valueSetData.include?.forEach((valueSetIncludeObj: ValueSetComposeInclude): void => {
-                    includeObj.system = valueSetIncludeObj.system;
-                });
+                extractValueSetInformation(valueSetUrl, valueSetPaths, germanConceptIds).then(
+                    (valueSetData: ValueSetLookUpTableInclude) => {
+                        delete includeObj.valueSet;
+                        valueSetData.include?.forEach((valueSetIncludeObj: ValueSetComposeInclude) => {
+                            includeObj.system = valueSetIncludeObj.system;
+                        });
+                    }
+                );
             }
         }
         return includeObj;
@@ -225,12 +382,13 @@ const extractCodeSystemInformation = (
  * @param {Record<string, string>} valueSetPaths All ValueSet of the FHIR packages.
  * @returns {PreValueSetLookUpTable} The ValueSetLookUpTable with the ValueSetInformation.
  */
-const addValueSetsToLookUpTable = (
+const addValueSetsToLookUpTable = async (
     valueSetURLs: Record<string, ValueSetLookUpTableInclude>,
     valueSetPaths: Record<string, string>
-): PreValueSetLookUpTable => {
+): Promise<PreValueSetLookUpTable> => {
+    const germanConceptIds: GermanConceptIDs | undefined = await getAllGermanConceptIds();
     for (const key of Object.keys(valueSetURLs)) {
-        valueSetURLs[key.toString()] = extractValueSetInformation(key, valueSetPaths);
+        valueSetURLs[key.toString()] = await extractValueSetInformation(key, valueSetPaths, germanConceptIds);
     }
     return valueSetURLs as PreValueSetLookUpTable;
 };
@@ -430,10 +588,11 @@ export const generateValueSetLookUpTable = async (lookUpTable: ResourceLookUpTab
         codeSystemPaths: Record<string, string>;
     } = await findAllValueSetsInLookUpTable();
 
-    const valueSetsToLookUpTable: PreValueSetLookUpTable = addValueSetsToLookUpTable(valueSetURLs, valueSetPaths);
+    const valueSetsToLookUpTable: PreValueSetLookUpTable = await addValueSetsToLookUpTable(valueSetURLs, valueSetPaths);
     const combinedValueSetsToLookUpTable: PreValueSetLookUpTable = combineCodeSystemsWithValueSets(
         valueSetsToLookUpTable,
         codeSystemPaths
     );
+    console.info(`There should be ${germanCounter} german translations in ${totalCounter} Codes`);
     return reformatCombinedValueSetsToLookUpTable(combinedValueSetsToLookUpTable);
 };

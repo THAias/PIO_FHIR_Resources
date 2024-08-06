@@ -62,6 +62,7 @@ generateResourceLookUpTable()
                     generateValueSetLookUpTableWithGermanTranslations(pioSmall).then(
                         async (valueSetLookUpTable: ValueSetLookUpTable): Promise<void> => {
                             await countGermanTranslations(valueSetLookUpTable);
+                            console.log(`Amount of ValueSets: ${Object.keys(valueSetLookUpTable).length}`);
                             fs.promises
                                 .writeFile(
                                     path.join(root, "src", "data", "ValueSetLookUpTable.json"),

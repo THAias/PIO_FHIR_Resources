@@ -48,6 +48,7 @@ export async function getFromCache<T>(key: string, options?: CacheOptions): Prom
             return null; // Cache expired, return null
         }
     } catch (error) {
+        console.error(error);
         return null; // Cache not found, return null
     }
 }
