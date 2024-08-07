@@ -112,7 +112,7 @@ const getAllGermanConceptIds = async (): Promise<GermanConceptIDs | undefined> =
         );
 
         const rateLimitAxiosClient: RateLimitedAxiosInstance = rateLimit(axiosClient, {
-            maxRequests: 5,
+            maxRequests: 3,
             perMilliseconds: 1000,
         });
 
@@ -153,20 +153,20 @@ const getAllGermanConceptIds = async (): Promise<GermanConceptIDs | undefined> =
                                 languageCode: item.referencedComponent.lang,
                                 acceptabilityMap: item.referencedComponent.acceptabilityMap,
                             };
-                            if (newElement.acceptabilityMap["31000274107"] === "PREFERRED") {
+                            if (
+                                newElement.acceptabilityMap["31000274107"] === "PREFERRED" &&
+                                oldElement.acceptabilityMap["31000274107"] !== "PREFERRED"
+                            ) {
                                 items[item.referencedComponent.conceptId] = newElement;
-                            } else if (oldElement.acceptabilityMap["31000274107"] !== "PREFERRED") {
-                                console.warn(
-                                    `The concept ID ${newElement.conceptId} has no preferred term === ${newElement.acceptabilityMap["31000274107"]}`
-                                );
                             }
+                        } else {
+                            items[item.referencedComponent.conceptId] = {
+                                conceptId: item.referencedComponent.conceptId,
+                                term: item.referencedComponent.term,
+                                languageCode: item.referencedComponent.lang,
+                                acceptabilityMap: item.referencedComponent.acceptabilityMap,
+                            };
                         }
-                        items[item.referencedComponent.conceptId] = {
-                            conceptId: item.referencedComponent.conceptId,
-                            term: item.referencedComponent.term,
-                            languageCode: item.referencedComponent.lang,
-                            acceptabilityMap: item.referencedComponent.acceptabilityMap,
-                        };
                     } else {
                         notActiveReleased++;
                     }
@@ -238,7 +238,7 @@ const extractValueSetInformation = async (
                 );
                 return {
                     code: conceptObj.code,
-                    display: germanTranslation?.value ?? germanTranslationTerm ?? conceptObj.display,
+                    display: germanTranslation?.value ?? conceptObj.display,
                     system: includeObj.system ?? valueSet.url,
                     version: includeObj.version ?? valueSet.version,
                     germanDisplay: germanTranslation?.value ?? germanTranslationTerm,
@@ -387,8 +387,10 @@ const addValueSetsToLookUpTable = async (
     valueSetPaths: Record<string, string>
 ): Promise<PreValueSetLookUpTable> => {
     const germanConceptIds: GermanConceptIDs | undefined = await getAllGermanConceptIds();
-    for (const key of Object.keys(valueSetURLs)) {
-        valueSetURLs[key.toString()] = await extractValueSetInformation(key, valueSetPaths, germanConceptIds);
+    if (germanConceptIds) {
+        for (const key of Object.keys(valueSetURLs)) {
+            valueSetURLs[key.toString()] = await extractValueSetInformation(key, valueSetPaths, germanConceptIds);
+        }
     }
     return valueSetURLs as PreValueSetLookUpTable;
 };
