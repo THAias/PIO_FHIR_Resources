@@ -11,7 +11,7 @@ import { root } from "../Helper";
  */
 export const generatePIOSmallLookUpTable = async (lookUpTable: ResourceLookUpTable): Promise<ResourceLookUpTable> => {
     /**
-     * Deletes all resources from lookUpTable, where 'wholeResourceExcluded' property is true
+     * Deletes all resources from lookUpTable, where 'wholeResourceExcluded' property is true.
      * @param {PioSmallExclusions} pioSmallExclusions Data from PioSmallExclusions.json
      */
     const deleteWholeResource = (pioSmallExclusions: PioSmallExclusions): void => {

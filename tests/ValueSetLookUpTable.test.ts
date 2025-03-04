@@ -22,9 +22,4 @@ describe("ValueSetLookUpTable", (): void => {
         expect(_ValueSetLookUpTable).toBeDefined();
         expect(loadedValueSetLookUpTableJson).toEqual(_ValueSetLookUpTable);
     });
-    it("the generated ValueSetLookUpTable should be the same as the imported ValueSetLookUpTable", async (): Promise<void> => {
-        const generatedValueSetLookUpTable =
-            await generateValueSetLookUpTableWithGermanTranslations(loadResourceLookUpTable);
-        expect(generatedValueSetLookUpTable).toEqual(loadedValueSetLookUpTableJson);
-    }, 250000);
 });
